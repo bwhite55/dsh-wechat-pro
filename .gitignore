@@ -1,6 +1,5 @@
-# 依赖与构建产物（安装时经 prepare 自动构建 dist，无需提交）
+# 依赖（dist 提交进仓库：git 安装直接用产物，避免 pnpm allowBuilds 拦截构建脚本）
 node_modules/
-dist/
 *.tgz
 
 # 本地数据与测试残留（绝不入库）
