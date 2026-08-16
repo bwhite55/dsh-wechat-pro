@@ -1,0 +1,26 @@
+# dsh-wechat-pro bundle patch —— 由 `dsh plugin --profile web add link:<本目录>`
+# 自动追加为 profile bundle 层，无需手动编辑任何 DSH 文件。
+#
+# 插件在 dsh web 进程内提供微信 ClawBot 通道（扫码登录 → 长轮询 → agent → 回复），
+# 复用宿主 apiProxy 创建/续接真实 DSH 会话（与 Web 共享会话与记忆）。
+#
+# 可覆盖配置（也支持 DSH_WXBOT_* 环境变量，见 README）：
+#   autoConnect    启动时若已有凭证自动连接（默认 true）
+#   allowFrom      微信用户白名单（逗号分隔的 from_user_id；空 = 全部，建议设置）
+#   dataDir        数据目录（默认 $DSH_HOME/dsh-wechat-pro）
+#   baseUrl        iLink 端点（默认官方；测试可指向本地 mock）
+#   replyMaxChars  单条微信消息上限字符（默认 3800，超出分片）
+#   streamLevel    默认输出等级 minimal | normal | verbose（默认 minimal；微信内可 /level 覆盖）
+#                  minimal=只收最终答复与错误（推荐：腾讯对单条入站消息的回复发送有额度限制，
+#                  过程消息刷屏会导致后续发送 ret=-2 prepare failed，minimal 最可靠）
+#                  normal=思考+工具调用/结果+答复；verbose=完整参数
+#   mirrorWebTurns Web 发起的回合是否也推送到微信（默认 false：只推微信发起的回合）
+- insert:
+    - id: wechat-pro
+      name: dsh-wechat-pro
+      config:
+        autoConnect: true
+        allowFrom: []
+        replyMaxChars: 3800
+        streamLevel: minimal
+        mirrorWebTurns: false

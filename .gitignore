@@ -1,0 +1,9 @@
+# 依赖与构建产物（安装时经 prepare 自动构建 dist，无需提交）
+node_modules/
+dist/
+*.tgz
+
+# 本地数据与测试残留（绝不入库）
+.test-data/
+.debug-data/
+*.log
