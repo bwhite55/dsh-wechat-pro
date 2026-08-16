@@ -121,7 +121,9 @@ export class SessionManager {
     async createNamed(contactKey, contactId, name) {
         const reg = await this.store.get(contactKey);
         const workspace = await this.resolveWorkspace(reg);
-        const sessionId = SessionId(`wechat-${safeKey(contactId)}-${name}-${randomUUID().slice(0, 4)}`);
+        // 会话 id 只用 ASCII（名字用 hash）：实测 harness 对含非 ASCII 字符的 sessionId，
+        // 模型请求会稳定失败（DeepSeek TRANSPORT）。书签的名字仍存注册表，id 不需可读。
+        const sessionId = SessionId(`wechat-${safeKey(contactId)}-${safeKey(name)}-${randomUUID().slice(0, 4)}`);
         try {
             await this.api.createSession({ workspaceId: workspace.workspaceId, sessionId });
         }
