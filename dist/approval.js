@@ -1,6 +1,8 @@
 /**
  * 审批转发：把 harness 的工具审批（ctx.approval 的 approval/request waterfall）
- * 转给绑定该会话的微信联系人，等待「允许 <token> / 拒绝 <token>」回复。
+ * 转给绑定该会话的微信联系人。微信侧回复方式：
+ *   - 快捷：`/yes` 允许 / `/no` 拒绝（作用于该联系人最近一个待审批请求）；
+ *   - 精确：`允许 <4位码>` / `拒绝 <4位码>`（多个待审批同时存在时按码选择）。
  * 无绑定联系人时调用 next() 让位给 Web 审批通道（两者共存）。
  */
 import { randomUUID } from 'node:crypto';
@@ -27,7 +29,8 @@ export class ApprovalForwarder {
             }
             const contactId = contacts[0];
             const token = randomUUID().slice(0, 4);
-            const prompt = `🔐 需要审批：工具「${request.toolName}」${request.reason ? `\n原因：${clamp(request.reason, 300)}` : ''}\n回复「允许 ${token}」或「拒绝 ${token}」`;
+            const multiple = this.hasPendingFor(contactId);
+            const prompt = `🔐 需要审批：工具「${request.toolName}」${request.reason ? `\n原因：${clamp(request.reason, 300)}` : ''}\n回复「/yes」允许 或「/no」拒绝${multiple ? `\n（多个待审批时：允许 ${token} 精确选择）` : ''}`;
             void this.engine.sendText(contactId, prompt, { retry: true }).catch((e) => log(`审批提示发送失败: ${e instanceof Error ? e.message : String(e)}`));
             log(`审批转发: user=${mask(contactId)} tool=${request.toolName} token=${token}`);
             return new Promise((resolve) => {
@@ -55,21 +58,55 @@ export class ApprovalForwarder {
             });
         }, { prepend: true });
     }
-    /** 微信收到「允许/拒绝 <token>」时调用；返回是否消费了消息。 */
+    /** 微信回复审批：`/yes`|`/no` 快捷形式，或 `允许/拒绝 <4位码>` 精确形式；返回是否消费了消息。 */
     async tryResolve(contactId, text) {
-        const m = /^(允许|拒绝|allow|reject|同意|不同意)\s*([a-z0-9]{4})$/i.exec(text.trim());
-        if (!m)
+        const trimmed = text.trim();
+        // 精确形式：允许/拒绝 <token>
+        const exact = /^(允许|拒绝|allow|reject|同意|不同意)\s*([a-z0-9]{4})$/i.exec(trimmed);
+        if (exact) {
+            const token = exact[2].toLowerCase();
+            const pending = this.pendings.get(token);
+            if (pending && pending.contactId === contactId) {
+                const allowed = /^(允许|allow|同意)$/i.test(exact[1]);
+                this.resolve(pending, contactId, allowed);
+                return true;
+            }
             return false;
-        const token = m[2].toLowerCase();
-        const pending = this.pendings.get(token);
-        if (!pending)
-            return false;
-        if (pending.contactId !== contactId)
-            return false;
-        const allowed = /^(允许|allow|同意)$/i.test(m[1]);
+        }
+        // 快捷形式：/yes /no yes no（作用于该联系人最近一个待审批）
+        const quick = /^\/?(yes|no|y|n)$/i.exec(trimmed);
+        if (quick) {
+            const pending = this.latestPendingOf(contactId);
+            if (!pending)
+                return false;
+            const allowed = /^(yes|y)$/i.test(quick[1]);
+            this.resolve(pending, contactId, allowed);
+            return true;
+        }
+        return false;
+    }
+    /** 结算一个审批并回执。 */
+    resolve(pending, contactId, allowed) {
         pending.settle(allowed ? 'allowed-once' : 'rejected');
-        await this.engine.sendText(contactId, allowed ? `✅ 已允许「${pending.toolName}」` : `⛔ 已拒绝「${pending.toolName}」`, { retry: true });
-        return true;
+        void this.engine.sendText(contactId, allowed ? `✅ 已允许「${pending.toolName}」` : `⛔ 已拒绝「${pending.toolName}」`, { retry: true }).catch(() => { });
+        log(`审批应答: user=${mask(contactId)} tool=${pending.toolName} ${allowed ? '允许' : '拒绝'}`);
+    }
+    /** 该联系人是否已有待审批（用于提示精确选择）。 */
+    hasPendingFor(contactId) {
+        for (const p of this.pendings.values()) {
+            if (p.contactId === contactId)
+                return true;
+        }
+        return false;
+    }
+    /** 该联系人最近一个待审批（Map 插入序，取最后）。 */
+    latestPendingOf(contactId) {
+        let latest;
+        for (const p of this.pendings.values()) {
+            if (p.contactId === contactId)
+                latest = p;
+        }
+        return latest;
     }
     dispose() {
         for (const pending of this.pendings.values()) {

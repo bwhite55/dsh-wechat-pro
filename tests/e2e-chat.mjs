@@ -66,13 +66,24 @@ async function capturedTexts() {
 async function allowAllApprovals(allowedTokens) {
   const texts = await capturedTexts()
   for (const t of texts) {
+    // 精确形式：允许 <token>（多审批场景）
     const m = t.match(/允许 ([a-z0-9]{4})/)
-    if (!m) continue
-    const token = m[1]
-    if (allowedTokens.has(token)) continue
-    allowedTokens.add(token)
-    console.log(`  → 自动应答审批 ${token}`)
-    await pushMessage(`允许 ${token}`)
+    if (m) {
+      const token = m[1]
+      if (allowedTokens.has(token)) continue
+      allowedTokens.add(token)
+      console.log(`  → 自动应答审批 ${token}`)
+      await pushMessage(`允许 ${token}`)
+      continue
+    }
+    // 快捷形式：/yes（单审批提示，无 token）
+    if (t.includes('🔐 需要审批')) {
+      const key = t.slice(0, 60)
+      if (allowedTokens.has(key)) continue
+      allowedTokens.add(key)
+      console.log(`  → 自动应答审批 /yes`)
+      await pushMessage('/yes')
+    }
   }
 }
 
