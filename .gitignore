@@ -5,4 +5,6 @@ node_modules/
 # 本地数据与测试残留（绝不入库）
 .test-data/
 .debug-data/
+.install-test/
+.test-dsh-home/
 *.log
